@@ -1,0 +1,25 @@
+## .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Node / frontend
+node_modules/
+dist/
+*.local
+
+## Secrets / env
+.env
+.env*
+!.env.example
+
+## OS / IDE
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+*~
