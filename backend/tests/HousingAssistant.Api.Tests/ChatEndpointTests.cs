@@ -40,6 +40,29 @@ public sealed class ChatEndpointTests : IClassFixture<WebApplicationFactory<Prog
         Assert.Equal(AssistantReply, body.Reply);
     }
 
+    [Fact]
+    public async Task Post_WhenOffTopic_ReturnsFixedOutOfScopeReply()
+    {
+        var client = CreateClient(new FakeChatAiClient(
+            result: new ChatAiResult
+            {
+                IsRelevant = false,
+                Reply = "This provider text must be discarded."
+            }));
+
+        var response = await client.PostAsJsonAsync("/api/chat", new ChatRequest
+        {
+            Message = "Skriv ett recept på pannkakor"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<ChatResponse>();
+        Assert.NotNull(body);
+        Assert.Equal(HousingAssistantPrompt.OutOfScopeReply, body.Reply);
+        Assert.DoesNotContain("discarded", body.Reply, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
@@ -122,24 +145,31 @@ public sealed class ChatEndpointTests : IClassFixture<WebApplicationFactory<Prog
     private sealed class FakeChatAiClient : IChatAiClient
     {
         private readonly Exception? _exception;
+        private readonly ChatAiResult _result;
 
         public FakeChatAiClient(
             bool isConfigured = true,
-            Exception? exception = null)
+            Exception? exception = null,
+            ChatAiResult? result = null)
         {
             IsConfigured = isConfigured;
             _exception = exception;
+            _result = result ?? new ChatAiResult
+            {
+                IsRelevant = true,
+                Reply = AssistantReply
+            };
         }
 
         public bool IsConfigured { get; }
 
-        public Task<string> GenerateReplyAsync(
+        public Task<ChatAiResult> GenerateReplyAsync(
             string userMessage,
             CancellationToken cancellationToken)
         {
             return _exception is null
-                ? Task.FromResult(AssistantReply)
-                : Task.FromException<string>(_exception);
+                ? Task.FromResult(_result)
+                : Task.FromException<ChatAiResult>(_exception);
         }
     }
 }

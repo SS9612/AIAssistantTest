@@ -4,5 +4,5 @@ public interface IChatAiClient
 {
     bool IsConfigured { get; }
 
-    Task<string> GenerateReplyAsync(string userMessage, CancellationToken cancellationToken);
+    Task<ChatAiResult> GenerateReplyAsync(string userMessage, CancellationToken cancellationToken);
 }

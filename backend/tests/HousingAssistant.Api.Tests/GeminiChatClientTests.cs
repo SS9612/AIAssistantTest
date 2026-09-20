@@ -9,7 +9,7 @@ namespace HousingAssistant.Api.Tests;
 public sealed class GeminiChatClientTests
 {
     [Fact]
-    public async Task GenerateReplyAsync_SendsExpectedRequestAndReturnsTrimmedReply()
+    public async Task GenerateReplyAsync_SendsStructuredRequestAndReturnsRelevantReply()
     {
         HttpRequestMessage? capturedRequest = null;
         string? capturedBody = null;
@@ -20,16 +20,17 @@ public sealed class GeminiChatClientTests
 
             return CreateJsonResponse(
                 HttpStatusCode.OK,
-                """{"candidates":[{"content":{"parts":[{"text":"  Ett svar.  "}]}}]}""");
+                """{"candidates":[{"content":{"parts":[{"text":"{\"isRelevant\":true,\"reply\":\"  Ett svar.  \"}"}]}}]}""");
         });
         using var httpClient = new HttpClient(handler);
         var client = CreateClient(httpClient);
 
-        var reply = await client.GenerateReplyAsync(
+        var result = await client.GenerateReplyAsync(
             "Hur fungerar bostadskön?",
             CancellationToken.None);
 
-        Assert.Equal("Ett svar.", reply);
+        Assert.True(result.IsRelevant);
+        Assert.Equal("Ett svar.", result.Reply);
         Assert.NotNull(capturedRequest);
         Assert.Equal(HttpMethod.Post, capturedRequest.Method);
         Assert.Equal(
@@ -52,9 +53,100 @@ public sealed class GeminiChatClientTests
             .GetProperty("parts")[0]
             .GetProperty("text")
             .GetString();
+        var generationConfig = root.GetProperty("generationConfig");
 
         Assert.Contains("Bostadskö-assistenten", systemText);
+        Assert.Contains("isRelevant", systemText);
         Assert.Equal("Hur fungerar bostadskön?", userText);
+        Assert.Equal(
+            "application/json",
+            generationConfig.GetProperty("responseMimeType").GetString());
+        Assert.Equal(0.2, generationConfig.GetProperty("temperature").GetDouble());
+        Assert.Equal(
+            "boolean",
+            generationConfig
+                .GetProperty("responseSchema")
+                .GetProperty("properties")
+                .GetProperty("isRelevant")
+                .GetProperty("type")
+                .GetString());
+        Assert.Contains(
+            "isRelevant",
+            generationConfig
+                .GetProperty("responseSchema")
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(item => item.GetString()));
+    }
+
+    [Theory]
+    [InlineData("varierar mellan förmedlare")]
+    [InlineData("Ingen markdown")]
+    [InlineData("ingen tillgång till användarens konto")]
+    [InlineData("Ge inga juridiska slutsatser")]
+    public void SystemPrompt_KeepsAccuracyAndFormattingRules(string expectedRule)
+    {
+        Assert.Contains(expectedRule, HousingAssistantPrompt.System);
+    }
+
+    [Fact]
+    public async Task GenerateReplyAsync_WhenStructuredReplyIsOffTopic_ReturnsIrrelevantResult()
+    {
+        var handler = new StubHttpMessageHandler((_, _) =>
+            Task.FromResult(CreateJsonResponse(
+                HttpStatusCode.OK,
+                """{"candidates":[{"content":{"parts":[{"text":"{\"isRelevant\":false,\"reply\":\"Avböjer.\"}"}]}}]}""")));
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient);
+
+        var result = await client.GenerateReplyAsync(
+            "Skriv ett recept på pannkakor",
+            CancellationToken.None);
+
+        Assert.False(result.IsRelevant);
+        Assert.Equal("Avböjer.", result.Reply);
+    }
+
+    [Fact]
+    public async Task GenerateReplyAsync_WhenRelevantReplyIsEmpty_ThrowsChatAiException()
+    {
+        var handler = new StubHttpMessageHandler((_, _) =>
+            Task.FromResult(CreateJsonResponse(
+                HttpStatusCode.OK,
+                """{"candidates":[{"content":{"parts":[{"text":"{\"isRelevant\":true,\"reply\":\"   \"}"}]}}]}""")));
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient);
+
+        await Assert.ThrowsAsync<ChatAiException>(() =>
+            client.GenerateReplyAsync("Hur fungerar bostadskön?", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GenerateReplyAsync_WhenStructuredJsonIsMalformed_ThrowsChatAiException()
+    {
+        var handler = new StubHttpMessageHandler((_, _) =>
+            Task.FromResult(CreateJsonResponse(
+                HttpStatusCode.OK,
+                """{"candidates":[{"content":{"parts":[{"text":"{not-json"}]}}]}""")));
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient);
+
+        await Assert.ThrowsAsync<ChatAiException>(() =>
+            client.GenerateReplyAsync("Hej", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GenerateReplyAsync_WhenRequiredFieldIsMissing_ThrowsChatAiException()
+    {
+        var handler = new StubHttpMessageHandler((_, _) =>
+            Task.FromResult(CreateJsonResponse(
+                HttpStatusCode.OK,
+                """{"candidates":[{"content":{"parts":[{"text":"{\"reply\":\"Saknar isRelevant\"}"}]}}]}""")));
+        using var httpClient = new HttpClient(handler);
+        var client = CreateClient(httpClient);
+
+        await Assert.ThrowsAsync<ChatAiException>(() =>
+            client.GenerateReplyAsync("Hej", CancellationToken.None));
     }
 
     [Fact]

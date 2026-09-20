@@ -10,7 +10,27 @@ public sealed class GeminiChatClient : IChatAiClient
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNameCaseInsensitive = true
+    };
+
+    private static readonly object ResponseSchema = new
+    {
+        type = "object",
+        properties = new
+        {
+            isRelevant = new
+            {
+                type = "boolean",
+                description = "True when the question is about housing queues or housing portals."
+            },
+            reply = new
+            {
+                type = "string",
+                description = "Swedish reply for the user."
+            }
+        },
+        required = new[] { "isRelevant", "reply" }
     };
 
     private readonly HttpClient _httpClient;
@@ -24,7 +44,7 @@ public sealed class GeminiChatClient : IChatAiClient
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
 
-    public async Task<string> GenerateReplyAsync(
+    public async Task<ChatAiResult> GenerateReplyAsync(
         string userMessage,
         CancellationToken cancellationToken)
     {
@@ -55,7 +75,13 @@ public sealed class GeminiChatClient : IChatAiClient
                         Role = "user",
                         Parts = [new GeminiPart { Text = userMessage }]
                     }
-                ]
+                ],
+                GenerationConfig = new GeminiGenerationConfig
+                {
+                    ResponseMimeType = "application/json",
+                    ResponseSchema = ResponseSchema,
+                    Temperature = 0.2
+                }
             },
             options: JsonOptions);
 
@@ -77,7 +103,7 @@ public sealed class GeminiChatClient : IChatAiClient
                         : $"Gemini-fel ({(int)response.StatusCode}): {googleMessage}");
             }
 
-            return ReadReply(responseBody);
+            return ReadResult(responseBody);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -97,7 +123,7 @@ public sealed class GeminiChatClient : IChatAiClient
         }
     }
 
-    private static string ReadReply(string responseBody)
+    private static ChatAiResult ReadResult(string responseBody)
     {
         GeminiGenerateContentResponse? payload;
         try
@@ -124,7 +150,42 @@ public sealed class GeminiChatClient : IChatAiClient
                 "Gemini returnerade inget text-svar. Försök igen.");
         }
 
-        return text.Trim();
+        GeminiStructuredReply? structured;
+        try
+        {
+            structured = JsonSerializer.Deserialize<GeminiStructuredReply>(text, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            throw new ChatAiException(
+                "Gemini returnerade ogiltig strukturerad JSON.",
+                ex);
+        }
+
+        if (structured is null)
+        {
+            throw new ChatAiException(
+                "Gemini returnerade ogiltig strukturerad JSON.");
+        }
+
+        if (structured.IsRelevant is null || structured.Reply is null)
+        {
+            throw new ChatAiException(
+                "Gemini returnerade ofullständig strukturerad JSON.");
+        }
+
+        var reply = structured.Reply.Trim();
+        if (structured.IsRelevant.Value && string.IsNullOrWhiteSpace(reply))
+        {
+            throw new ChatAiException(
+                "Gemini returnerade ett tomt svar för en relevant fråga.");
+        }
+
+        return new ChatAiResult
+        {
+            IsRelevant = structured.IsRelevant.Value,
+            Reply = reply
+        };
     }
 
     private static string? TryReadGoogleError(string responseBody)
@@ -152,6 +213,17 @@ public sealed class GeminiChatClient : IChatAiClient
         public GeminiContent? SystemInstruction { get; init; }
 
         public required IReadOnlyList<GeminiContent> Contents { get; init; }
+
+        public GeminiGenerationConfig? GenerationConfig { get; init; }
+    }
+
+    private sealed class GeminiGenerationConfig
+    {
+        public string? ResponseMimeType { get; init; }
+
+        public object? ResponseSchema { get; init; }
+
+        public double? Temperature { get; init; }
     }
 
     private sealed class GeminiGenerateContentResponse
@@ -174,5 +246,12 @@ public sealed class GeminiChatClient : IChatAiClient
     private sealed class GeminiPart
     {
         public string? Text { get; init; }
+    }
+
+    private sealed class GeminiStructuredReply
+    {
+        public bool? IsRelevant { get; init; }
+
+        public string? Reply { get; init; }
     }
 }

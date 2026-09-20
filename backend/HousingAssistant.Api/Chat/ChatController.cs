@@ -40,9 +40,13 @@ public sealed class ChatController : ControllerBase
 
         try
         {
-            var reply = await _chatAiClient.GenerateReplyAsync(
+            var result = await _chatAiClient.GenerateReplyAsync(
                 request.Message,
                 cancellationToken);
+
+            var reply = result.IsRelevant
+                ? result.Reply
+                : HousingAssistantPrompt.OutOfScopeReply;
 
             return Ok(new ChatResponse { Reply = reply });
         }
