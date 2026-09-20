@@ -1,10 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>HousingAssistant.Api</RootNamespace>
+    <UserSecretsId>bdf74d90-798f-4ab1-9311-4ac1fa05e2fe</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

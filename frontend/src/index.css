@@ -1,0 +1,76 @@
+:root {
+  --color-charcoal: #333333;
+  --color-canvas: #f3f3f3;
+  --color-surface: #ffffff;
+  --color-text: #212529;
+  --color-heading: #404040;
+  --color-muted: #707070;
+  --color-muted-light: #989898;
+  --color-turquoise: #6cbcc7;
+  --color-turquoise-hover: #4f9ca7;
+  --color-red: #cd2a2c;
+  --color-link: #458cc8;
+  --color-border: #dddddd;
+  --color-border-strong: #c9ccd4;
+  --color-ai-info-bg: #d1ecf1;
+  --color-ai-info-text: #0c5460;
+  --color-form-bg: #fbfbfb;
+  --shadow-panel: 0 5px 12px 0 rgba(0, 0, 0, 0.11);
+  --radius-control: 3px;
+  --radius-panel: 12px;
+  --nav-height: 60px;
+  --font-sans: Arial, Helvetica, sans-serif;
+  --focus-ring: 0 0 0 0.2rem rgba(108, 188, 199, 0.5);
+  --min-target: 44px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-canvas);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
